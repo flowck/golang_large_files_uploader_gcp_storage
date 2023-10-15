@@ -1,0 +1,22 @@
+version: 3
+
+dotenv:
+  - ./.env
+
+tasks:
+  run:
+    cmds:
+      - task watch -- go run ./
+
+  watch:
+    cmds:
+      - |
+        reflex -r '\.go' -s -- sh -c '{{.CLI_ARGS}}'
+
+  upload:
+    cmds:
+      - curl -H 'Content-Type:multipart/form-data' -F 'video=@./.demo/IMG_2189.mov' http://localhost:8080/videos
+
+  file:
+    cmds:
+      - curl http://localhost:8080/videos/{{.CLI_ARGS}}

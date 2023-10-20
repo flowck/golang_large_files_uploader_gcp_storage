@@ -15,8 +15,8 @@ tasks:
 
   upload:
     cmds:
-      - curl -H 'Content-Type:multipart/form-data' -F 'video=@./.demo/IMG_2189.mov' http://localhost:8080/videos
+      - curl -H 'Content-Type:multipart/form-data' -F 'file=@./.demo/ninety-mb-1697405798.genfile' http://localhost:8080/files
 
   file:
     cmds:
-      - curl http://localhost:8080/videos/{{.CLI_ARGS}}
+      - curl http://localhost:8080/files/{{.CLI_ARGS}}

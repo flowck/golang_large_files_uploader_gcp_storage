@@ -2,32 +2,40 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
+	"github.com/kelseyhightower/envconfig"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"videouploader/logs"
+
+	"github.com/flowck/large_files_uploader_gcp_storage/logs"
 )
 
-const bucketName = "videouploader_raw_videos"
+type Config struct {
+	BucketName         string `envconfig:"GCP_BUCKET_NAME"`
+	MaxFileSizeInBytes int64  `envconfig:"MAX_FILE_SIZE_IN_BYTES"`
+}
 
 func main() {
-	router := echo.New()
 	logger := logs.New(true)
+
+	config := &Config{}
+	if err := envconfig.Process("", config); err != nil {
+		logger.Fatal(err)
+	}
+
+	router := echo.New()
 	done := make(chan os.Signal, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 	signal.Notify(done, syscall.SIGINT, syscall.SIGTERM)
-
 	storageUploader, err := NewStorageClient(ctx)
 	if err != nil {
 		panic(err)
@@ -35,19 +43,22 @@ func main() {
 
 	router.Use(loggerMiddleware(logger))
 	router.Use(middleware.Recover())
-	router.POST("/videos", func(c echo.Context) error {
+
+	router.POST("/files", func(c echo.Context) error {
 		var uploader *UploadHandler
-		uploader, err = NewUploadHandler(c.Request(), "video")
+		uploader, err = NewUploadHandler(c.Request(), "file", config.MaxFileSizeInBytes)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 		}
 
-		storageWriter := storageUploader.Upload(c.Request().Context(), bucketName, uploader.fileName)
+		storageWriter := storageUploader.Upload(c.Request().Context(), config.BucketName, uploader.fileName)
 		defer func() { _ = storageWriter.Close() }()
 
 		err = uploader.Handle(func(chunk []byte) error {
-			if _, err = storageWriter.Write(chunk); err != nil {
-				return err
+			if os.Getenv("GCP_STORAGE_ENABLED") == "enabled" {
+				if _, err = storageWriter.Write(chunk); err != nil {
+					return err
+				}
 			}
 
 			return nil
@@ -59,10 +70,10 @@ func main() {
 		return c.NoContent(http.StatusCreated)
 	})
 
-	router.GET("/videos/:file_name", func(c echo.Context) error {
+	router.GET("/files/:file_name", func(c echo.Context) error {
 		fileName := c.Param("file_name")
 
-		url, err := storageUploader.GetFileUrl(bucketName, fileName)
+		url, err := storageUploader.GetFileUrl(config.BucketName, fileName)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"message": err.Error()})
 		}
@@ -92,15 +103,6 @@ func main() {
 	}
 
 	log.Println("Exited gracefully")
-}
-
-func printMemoryUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	fmt.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
-	fmt.Printf("\tTotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
-	fmt.Printf("\tSys = %v MiB", m.Sys/1024/1024)
-	fmt.Printf("\tNumGC = %v\n", m.NumGC)
 }
 
 func loggerMiddleware(logger *logs.Logger) echo.MiddlewareFunc {

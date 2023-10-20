@@ -50,3 +50,18 @@ func (u *StorageClient) GetFileUrl(bucketName, fileName string) (string, error) 
 		Expires: time.Now().UTC().Add(time.Hour * 24),
 	})
 }
+
+type StorageClientMock struct {
+}
+
+func NewStorageClientMock() (*StorageClientMock, error) {
+	return &StorageClientMock{}, nil
+}
+
+func (u *StorageClientMock) Upload(ctx context.Context, bucketName, fileName string) *StorageWriter {
+	return &StorageWriter{writer: &storage.Writer{}}
+}
+
+func (u *StorageClientMock) GetFileUrl(bucketName, fileName string) (string, error) {
+	return "", nil
+}
